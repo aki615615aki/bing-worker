@@ -6,7 +6,7 @@ export default {
     // ターゲットURL
     let target = url.pathname.startsWith("/http")
       ? url.pathname.slice(1) + url.search
-      : "https://www.google.com" + url.pathname + url.search;
+      : "https://www.bing.com" + url.pathname + url.search;
 
     let targetUrl;
     try {
@@ -80,28 +80,29 @@ export default {
 
     let body = await res.text();
 
-    // Google関連ドメイン
+    // Bing / Microsoft関連ドメイン
     const domains = [
-      "www.google.com",
-      "google.com",
-      "accounts.google.com",
-      "myaccount.google.com",
-      "mail.google.com",
-      "drive.google.com",
-      "docs.google.com",
-      "www.gstatic.com",
-      "ssl.gstatic.com",
-      "gstatic.com",
-      "apis.google.com",
-      "www.googleapis.com",
-      "lh3.googleusercontent.com",
-      "googleusercontent.com",
-      "clients1.google.com",
-      "clients2.google.com",
-      "clients3.google.com",
-      "clients4.google.com",
-      "clients5.google.com",
-      "clients6.google.com",
+      "www.bing.com",
+      "bing.com",
+      "www.microsoft.com",
+      "microsoft.com",
+      "login.microsoftonline.com",
+      "login.live.com",
+      "account.microsoft.com",
+      "edge.microsoft.com",
+      "c.bing.com",
+      "r.bing.com",
+      "th.bing.com",
+      "tse1.mm.bing.net",
+      "tse2.mm.bing.net",
+      "tse3.mm.bing.net",
+      "tse4.mm.bing.net",
+      "www.bing.net",
+      "bing.net",
+      "msn.com",
+      "www.msn.com",
+      "ajax.microsoft.com",
+      "cdn.msn.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
