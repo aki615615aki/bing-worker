@@ -3,34 +3,21 @@ export default {
     const url = new URL(request.url);
 
     const target =
-      "https://www.yahoo.co.jp" +
+      "https://youtube.com" +
       url.pathname +
       url.search;
 
     const response = await fetch(target, {
       method: request.method,
       headers: request.headers,
-      redirect: "manual"
+      body: request.method === "GET" || request.method === "HEAD"
+        ? undefined
+        : request.body
     });
-
-    const headers = new Headers(response.headers);
-
-    const location = headers.get("Location");
-
-    if (location) {
-      const redirectUrl = new URL(location, "https://www.yahoo.co.jp");
-
-      headers.set(
-        "Location",
-        url.origin +
-        redirectUrl.pathname +
-        redirectUrl.search
-      );
-    }
 
     return new Response(response.body, {
       status: response.status,
-      headers
+      headers: response.headers
     });
   }
 };
