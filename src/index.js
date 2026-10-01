@@ -15,14 +15,14 @@ export default {
       return new Response("Bad URL", { status: 400 });
     }
 
-    // ヘッダー
+    // ヘッダー（ログイン優先で Origin / Referer は消さない）
     const headers = new Headers(request.headers);
     ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
      "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via"].forEach(h => headers.delete(h));
 
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-    // リダイレクト手動
+    // リダイレクトは手動
     const res = await fetch(targetUrl, {
       method: request.method,
       headers,
@@ -32,44 +32,51 @@ export default {
 
     const newHeaders = new Headers(res.headers);
 
-    // Location書き換え
+    // Locationを強制的にプロキシ経由にする
     if (newHeaders.has("location")) {
       let loc = newHeaders.get("location");
       if (loc.startsWith("http")) {
         newHeaders.set("location", proxyOrigin + "/" + loc);
       } else if (loc.startsWith("//")) {
         newHeaders.set("location", proxyOrigin + "/https:" + loc);
+      } else if (loc.startsWith("/")) {
+        // 相対パスの場合は元のホストを付ける
+        newHeaders.set("location", proxyOrigin + "/https://" + targetUrl.host + loc);
       }
     }
 
-    // セキュリティヘッダー削除
+    // セキュリティヘッダー全削除
     ["content-security-policy", "content-security-policy-report-only",
-     "x-frame-options", "strict-transport-security"].forEach(h => newHeaders.delete(h));
+     "x-frame-options", "strict-transport-security", "x-content-type-options",
+     "cross-origin-opener-policy", "cross-origin-embedder-policy"].forEach(h => newHeaders.delete(h));
 
-    // Cookie Domain削除
+    // CookieのDomainを強制削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
       for (const c of cookies) {
-        newHeaders.append("set-cookie", c.replace(/;\s*Domain=[^;]*/gi, ""));
+        let cleaned = c
+          .replace(/;\s*Domain=[^;]*/gi, "")
+          .replace(/;\s*SameSite=[^;]*/gi, "; SameSite=None")
+          .replace(/;\s*Secure/gi, "; Secure");
+        newHeaders.append("set-cookie", cleaned);
       }
     }
 
     const type = res.headers.get("content-type") || "";
 
     // バイナリはそのまま
-    if (type.includes("video/") || type.includes("audio/") || type.includes("image/") || type.includes("font/")) {
+    if (type.includes("video/") || type.includes("audio/") || type.includes("image/") || type.includes("font/") || type.includes("application/octet-stream")) {
       newHeaders.delete("content-length");
       return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    // 書き換え対象を広げる（ログインJS対策）
+    // ほぼ全部書き換える（強引）
     const shouldRewrite =
-      type.includes("text/html") ||
-      type.includes("application/json") ||
-      type.includes("text/plain") ||
+      type.includes("text/") ||
+      type.includes("json") ||
       type.includes("javascript") ||
-      type.includes("text/css");
+      type.includes("xml");
 
     if (!shouldRewrite) {
       newHeaders.delete("content-length");
@@ -78,12 +85,16 @@ export default {
 
     let body = await res.text();
 
-    // ログインに必要なドメインを多めに入れる
+    // ログイン関連ドメインを大量投入
     const domains = [
       "accounts.google.com",
+      "myaccount.google.com",
       "www.gstatic.com",
-      "gstatic.com",
       "ssl.gstatic.com",
+      "gstatic.com",
+      "apis.google.com",
+      "www.googleapis.com",
+      "oauth2.googleapis.com",
       "www.youtube.com",
       "youtube.com",
       "m.youtube.com",
@@ -91,14 +102,13 @@ export default {
       "i.ytimg.com",
       "ytimg.com",
       "googlevideo.com",
-      "myaccount.google.com",
-      "apis.google.com",
-      "www.googleapis.com",
+      "play.google.com",
+      "lh3.googleusercontent.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
 
-    // マーカー方式で安全置換
+    // マーカー方式
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
       body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
