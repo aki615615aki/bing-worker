@@ -116,7 +116,7 @@ export default {
 
       // Google
       "www.google.com", "google.com", "accounts.google.com",
-      "www.gstatic.com", "gstatic.com","pornhub.com",
+      "www.gstatic.com", "gstatic.com",
     ];
     domains.sort((a, b) => b.length - a.length);
 
