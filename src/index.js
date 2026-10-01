@@ -3,26 +3,31 @@ export default {
     const url = new URL(request.url);
     const proxyOrigin = url.origin;
 
-    // ターゲットURL
-    let target = url.pathname.startsWith("/http")
-      ? url.pathname.slice(1) + url.search
-      : "https://www.bing.com" + url.pathname + url.search;
+    // ===== ターゲット決定 =====
+    let target;
+    if (url.pathname.startsWith("/http://") || url.pathname.startsWith("/https://")) {
+      // 任意のサイトを指定した場合
+      target = url.pathname.slice(1) + url.search;
+    } else {
+      // 何も指定しない場合はBing
+      target = "https://www.bing.com" + url.pathname + url.search;
+    }
 
     let targetUrl;
     try {
       targetUrl = new URL(target);
     } catch {
-      return new Response("Bad URL", { status: 400 });
+      return new Response("Invalid URL", { status: 400 });
     }
 
-    // ヘッダー（IP匿名化）
+    // ===== ヘッダー（IP匿名化） =====
     const headers = new Headers(request.headers);
     ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
      "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via"].forEach(h => headers.delete(h));
 
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-    // リダイレクト手動
+    // ===== リクエスト =====
     const res = await fetch(targetUrl, {
       method: request.method,
       headers,
@@ -32,7 +37,7 @@ export default {
 
     const newHeaders = new Headers(res.headers);
 
-    // Location書き換え
+    // Locationをプロキシ経由に書き換え
     if (newHeaders.has("location")) {
       let loc = newHeaders.get("location");
       if (loc.startsWith("http")) {
@@ -48,7 +53,7 @@ export default {
     ["content-security-policy", "content-security-policy-report-only",
      "x-frame-options", "strict-transport-security", "x-content-type-options"].forEach(h => newHeaders.delete(h));
 
-    // Cookie Domain削除
+    // CookieのDomain削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
@@ -59,13 +64,19 @@ export default {
 
     const type = res.headers.get("content-type") || "";
 
-    // バイナリはそのまま
-    if (type.includes("image/") || type.includes("font/") || type.includes("video/") || type.includes("audio/") || type.includes("application/octet-stream")) {
+    // バイナリはそのまま返す
+    if (
+      type.includes("image/") ||
+      type.includes("font/") ||
+      type.includes("video/") ||
+      type.includes("audio/") ||
+      type.includes("application/octet-stream")
+    ) {
       newHeaders.delete("content-length");
       return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    // 書き換え対象
+    // テキスト系だけ書き換え
     const shouldRewrite =
       type.includes("text/html") ||
       type.includes("application/json") ||
@@ -80,29 +91,17 @@ export default {
 
     let body = await res.text();
 
-    // Bing / Microsoft関連ドメイン
+    // よく使うドメインをまとめて書き換え対象にする
     const domains = [
-      "www.bing.com",
-      "bing.com",
-      "www.microsoft.com",
-      "microsoft.com",
-      "login.microsoftonline.com",
-      "login.live.com",
-      "account.microsoft.com",
-      "edge.microsoft.com",
-      "c.bing.com",
-      "r.bing.com",
-      "th.bing.com",
-      "tse1.mm.bing.net",
-      "tse2.mm.bing.net",
-      "tse3.mm.bing.net",
-      "tse4.mm.bing.net",
-      "www.bing.net",
-      "bing.net",
-      "msn.com",
-      "www.msn.com",
-      "ajax.microsoft.com",
-      "cdn.msn.com",
+      // Bing / Microsoft
+      "www.bing.com", "bing.com", "c.bing.com", "r.bing.com", "th.bing.com",
+      "tse1.mm.bing.net", "tse2.mm.bing.net", "tse3.mm.bing.net", "tse4.mm.bing.net",
+      "www.microsoft.com", "microsoft.com", "login.microsoftonline.com", "login.live.com",
+      "msn.com", "www.msn.com", "cdn.msn.com",
+      // Google系（必要なら）
+      "www.google.com", "google.com", "accounts.google.com", "www.gstatic.com", "gstatic.com",
+      // その他よく出るもの
+      "www.youtube.com", "youtube.com", "youtu.be", "i.ytimg.com", "ytimg.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
