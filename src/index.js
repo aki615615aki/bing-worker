@@ -6,10 +6,9 @@ export default {
     // ===== ターゲット決定 =====
     let target;
     if (url.pathname.startsWith("/http://") || url.pathname.startsWith("/https://")) {
-      // 任意のサイトを指定した場合
       target = url.pathname.slice(1) + url.search;
     } else {
-      // 何も指定しない場合はBing
+      // デフォルトはBing
       target = "https://www.bing.com" + url.pathname + url.search;
     }
 
@@ -37,7 +36,7 @@ export default {
 
     const newHeaders = new Headers(res.headers);
 
-    // Locationをプロキシ経由に書き換え
+    // Location書き換え
     if (newHeaders.has("location")) {
       let loc = newHeaders.get("location");
       if (loc.startsWith("http")) {
@@ -53,7 +52,7 @@ export default {
     ["content-security-policy", "content-security-policy-report-only",
      "x-frame-options", "strict-transport-security", "x-content-type-options"].forEach(h => newHeaders.delete(h));
 
-    // CookieのDomain削除
+    // Cookie Domain削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
@@ -64,7 +63,7 @@ export default {
 
     const type = res.headers.get("content-type") || "";
 
-    // バイナリはそのまま返す
+    // バイナリはそのまま
     if (
       type.includes("image/") ||
       type.includes("font/") ||
@@ -76,7 +75,7 @@ export default {
       return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    // テキスト系だけ書き換え
+    // テキスト系を書き換え
     const shouldRewrite =
       type.includes("text/html") ||
       type.includes("application/json") ||
@@ -91,22 +90,40 @@ export default {
 
     let body = await res.text();
 
-    // よく使うドメインをまとめて書き換え対象にする
+    // ===== ドメインリスト（YouTubeを重点的に追加） =====
     const domains = [
+      // YouTube関連（多めに入れる）
+      "www.youtube.com",
+      "youtube.com",
+      "m.youtube.com",
+      "youtu.be",
+      "www.youtu.be",
+      "youtube-nocookie.com",
+      "www.youtube-nocookie.com",
+      "i.ytimg.com",
+      "s.ytimg.com",
+      "ytimg.com",
+      "yt3.ggpht.com",
+      "ggpht.com",
+      "googlevideo.com",
+      "googleusercontent.com",
+      "lh3.googleusercontent.com",
+
       // Bing / Microsoft
       "www.bing.com", "bing.com", "c.bing.com", "r.bing.com", "th.bing.com",
       "tse1.mm.bing.net", "tse2.mm.bing.net", "tse3.mm.bing.net", "tse4.mm.bing.net",
       "www.microsoft.com", "microsoft.com", "login.microsoftonline.com", "login.live.com",
       "msn.com", "www.msn.com", "cdn.msn.com",
-      // Google系（必要なら）
-      "www.google.com", "google.com", "accounts.google.com", "www.gstatic.com", "gstatic.com",
-      // その他よく出るもの
-      "www.youtube.com", "youtube.com", "youtu.be", "i.ytimg.com", "ytimg.com",
+
+      // Google系
+      "www.google.com", "google.com", "accounts.google.com",
+      "www.gstatic.com", "ssl.gstatic.com", "gstatic.com",
+      "apis.google.com", "www.googleapis.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
 
-    // マーカー方式で安全に置換
+    // マーカー方式で安全置換
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
       body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
