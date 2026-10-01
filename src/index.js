@@ -15,7 +15,7 @@ export default {
       return new Response("Bad URL", { status: 400 });
     }
 
-    // ヘッダー（IP匿名化）
+    // ヘッダー（IP匿名化 + Rangeはそのまま通す）
     const headers = new Headers(request.headers);
     ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
      "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via",
@@ -36,8 +36,15 @@ export default {
     ["content-security-policy", "content-security-policy-report-only",
      "x-frame-options", "strict-transport-security"].forEach(h => newHeaders.delete(h));
 
-    // HTML以外はそのまま返す（軽量化）
-    if (!type.includes("text/html")) {
+    // 動画・画像・フォントなどバイナリはそのまま返す（重要）
+    if (
+      type.includes("video/") ||
+      type.includes("audio/") ||
+      type.includes("image/") ||
+      type.includes("font/") ||
+      type.includes("application/octet-stream") ||
+      type.includes("application/x-javascript") === false && !type.includes("text/") && !type.includes("json") && !type.includes("javascript")
+    ) {
       newHeaders.delete("content-length");
       return new Response(res.body, {
         status: res.status,
@@ -45,8 +52,18 @@ export default {
       });
     }
 
-    // ===== HTMLだけ安全に書き換え（マーカー方式） =====
-    let html = await res.text();
+    // HTML と JSON だけ書き換える
+    const shouldRewrite = type.includes("text/html") || type.includes("application/json") || type.includes("text/plain");
+
+    if (!shouldRewrite) {
+      newHeaders.delete("content-length");
+      return new Response(res.body, {
+        status: res.status,
+        headers: newHeaders,
+      });
+    }
+
+    let body = await res.text();
 
     const domains = [
       "www.youtube.com",
@@ -58,24 +75,22 @@ export default {
       "googlevideo.com",
     ];
 
-    // 長い順
     domains.sort((a, b) => b.length - a.length);
 
-    // 1. 一時マーカーに置き換え（二重防止）
+    // マーカー方式で安全に置換
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
-      html = html.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
-      html = html.replace(new RegExp(`//${domain.replace(/\./g, "\\.")}`, "gi"), marker);
+      body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
+      body = body.replace(new RegExp(`//${domain.replace(/\./g, "\\.")}`, "gi"), marker);
     });
 
-    // 2. マーカーを正しいURLに戻す
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
-      html = html.split(marker).join(`${proxyOrigin}/https://${domain}`);
+      body = body.split(marker).join(`${proxyOrigin}/https://${domain}`);
     });
 
     newHeaders.delete("content-length");
-    return new Response(html, {
+    return new Response(body, {
       status: res.status,
       headers: newHeaders,
     });
