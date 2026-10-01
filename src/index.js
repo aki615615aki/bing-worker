@@ -63,7 +63,7 @@ export default {
 
     const type = res.headers.get("content-type") || "";
 
-    // バイナリはそのまま
+    // バイナリ・動画ストリームはそのまま
     if (
       type.includes("image/") ||
       type.includes("font/") ||
@@ -90,24 +90,22 @@ export default {
 
     let body = await res.text();
 
-    // ===== ドメインリスト（YouTubeを重点的に追加） =====
+    // ===== ドメインリスト（ブロスタ用クラウド＋既存） =====
     const domains = [
-      // YouTube関連（多めに入れる）
-      "www.youtube.com",
-      "youtube.com",
-      "m.youtube.com",
-      "youtu.be",
-      "www.youtu.be",
-      "youtube-nocookie.com",
-      "www.youtube-nocookie.com",
-      "i.ytimg.com",
-      "s.ytimg.com",
-      "ytimg.com",
-      "yt3.ggpht.com",
-      "ggpht.com",
-      "googlevideo.com",
-      "googleusercontent.com",
-      "lh3.googleusercontent.com",
+      // ===== ブロスタ用クラウドゲーミング =====
+      "easyfun.gg",
+      "www.easyfun.gg",
+      "cloudmoonapp.com",
+      "www.cloudmoonapp.com",
+      "web.cloudmoonapp.com",
+      "now.gg",
+      "www.now.gg",
+      "nowgg.nl",
+
+      // YouTube関連
+      "www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be",
+      "youtube-nocookie.com", "i.ytimg.com", "s.ytimg.com", "ytimg.com",
+      "yt3.ggpht.com", "ggpht.com", "googlevideo.com", "googleusercontent.com",
 
       // Bing / Microsoft
       "www.bing.com", "bing.com", "c.bing.com", "r.bing.com", "th.bing.com",
