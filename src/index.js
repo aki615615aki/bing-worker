@@ -6,7 +6,7 @@ export default {
     // ターゲットURL
     let target = url.pathname.startsWith("/http")
       ? url.pathname.slice(1) + url.search
-      : "https://www.youtube.com" + url.pathname + url.search;
+      : "https://www.google.com" + url.pathname + url.search;
 
     let targetUrl;
     try {
@@ -15,14 +15,14 @@ export default {
       return new Response("Bad URL", { status: 400 });
     }
 
-    // ヘッダー（ログイン優先で Origin / Referer は消さない）
+    // ヘッダー（IP匿名化）
     const headers = new Headers(request.headers);
     ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
      "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via"].forEach(h => headers.delete(h));
 
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-    // リダイレクトは手動
+    // リダイレクト手動
     const res = await fetch(targetUrl, {
       method: request.method,
       headers,
@@ -32,7 +32,7 @@ export default {
 
     const newHeaders = new Headers(res.headers);
 
-    // Locationを強制的にプロキシ経由にする
+    // Location書き換え
     if (newHeaders.has("location")) {
       let loc = newHeaders.get("location");
       if (loc.startsWith("http")) {
@@ -40,43 +40,38 @@ export default {
       } else if (loc.startsWith("//")) {
         newHeaders.set("location", proxyOrigin + "/https:" + loc);
       } else if (loc.startsWith("/")) {
-        // 相対パスの場合は元のホストを付ける
         newHeaders.set("location", proxyOrigin + "/https://" + targetUrl.host + loc);
       }
     }
 
-    // セキュリティヘッダー全削除
+    // セキュリティヘッダー削除
     ["content-security-policy", "content-security-policy-report-only",
-     "x-frame-options", "strict-transport-security", "x-content-type-options",
-     "cross-origin-opener-policy", "cross-origin-embedder-policy"].forEach(h => newHeaders.delete(h));
+     "x-frame-options", "strict-transport-security", "x-content-type-options"].forEach(h => newHeaders.delete(h));
 
-    // CookieのDomainを強制削除
+    // Cookie Domain削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
       for (const c of cookies) {
-        let cleaned = c
-          .replace(/;\s*Domain=[^;]*/gi, "")
-          .replace(/;\s*SameSite=[^;]*/gi, "; SameSite=None")
-          .replace(/;\s*Secure/gi, "; Secure");
-        newHeaders.append("set-cookie", cleaned);
+        newHeaders.append("set-cookie", c.replace(/;\s*Domain=[^;]*/gi, ""));
       }
     }
 
     const type = res.headers.get("content-type") || "";
 
     // バイナリはそのまま
-    if (type.includes("video/") || type.includes("audio/") || type.includes("image/") || type.includes("font/") || type.includes("application/octet-stream")) {
+    if (type.includes("image/") || type.includes("font/") || type.includes("video/") || type.includes("audio/") || type.includes("application/octet-stream")) {
       newHeaders.delete("content-length");
       return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    // ほぼ全部書き換える（強引）
+    // 書き換え対象
     const shouldRewrite =
-      type.includes("text/") ||
-      type.includes("json") ||
+      type.includes("text/html") ||
+      type.includes("application/json") ||
+      type.includes("text/plain") ||
       type.includes("javascript") ||
-      type.includes("xml");
+      type.includes("text/css");
 
     if (!shouldRewrite) {
       newHeaders.delete("content-length");
@@ -85,30 +80,33 @@ export default {
 
     let body = await res.text();
 
-    // ログイン関連ドメインを大量投入
+    // Google関連ドメイン
     const domains = [
+      "www.google.com",
+      "google.com",
       "accounts.google.com",
       "myaccount.google.com",
+      "mail.google.com",
+      "drive.google.com",
+      "docs.google.com",
       "www.gstatic.com",
       "ssl.gstatic.com",
       "gstatic.com",
       "apis.google.com",
       "www.googleapis.com",
-      "oauth2.googleapis.com",
-      "www.youtube.com",
-      "youtube.com",
-      "m.youtube.com",
-      "youtu.be",
-      "i.ytimg.com",
-      "ytimg.com",
-      "googlevideo.com",
-      "play.google.com",
       "lh3.googleusercontent.com",
+      "googleusercontent.com",
+      "clients1.google.com",
+      "clients2.google.com",
+      "clients3.google.com",
+      "clients4.google.com",
+      "clients5.google.com",
+      "clients6.google.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
 
-    // マーカー方式
+    // マーカー方式で安全に置換
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
       body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
