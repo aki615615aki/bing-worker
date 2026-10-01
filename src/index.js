@@ -116,9 +116,8 @@ export default {
 
       // Google
       "www.google.com", "google.com", "accounts.google.com",
-      "www.gstatic.com", "gstatic.com",
+      "www.gstatic.com", "gstatic.com","pornhub.com",
     ];
-
     domains.sort((a, b) => b.length - a.length);
 
     // マーカー方式で安全置換
