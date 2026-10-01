@@ -2,22 +2,28 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
 
-    const target =
-      "https://youtube.com" +
-      url.pathname +
-      url.search;
+    const upstream = new URL(
+      url.pathname + url.search,
+      "https://youtube.com"
+    );
 
-    const response = await fetch(target, {
+    const headers = new Headers(request.headers);
+    headers.delete("host");
+
+    const response = await fetch(upstream, {
       method: request.method,
-      headers: request.headers,
-      body: request.method === "GET" || request.method === "HEAD"
-        ? undefined
-        : request.body
+      headers,
+      body:
+        request.method === "GET" || request.method === "HEAD"
+          ? undefined
+          : request.body
     });
+
+    const responseHeaders = new Headers(response.headers);
 
     return new Response(response.body, {
       status: response.status,
-      headers: response.headers
+      headers: responseHeaders
     });
   }
 };
