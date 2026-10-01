@@ -3,7 +3,7 @@ export default {
     const url = new URL(request.url);
 
     const target =
-      "https://www.bing.com" +
+      "https://www.yahoo.co.jp" +
       url.pathname +
       url.search;
 
@@ -18,7 +18,7 @@ export default {
     const location = headers.get("Location");
 
     if (location) {
-      const redirectUrl = new URL(location, "https://www.bing.com");
+      const redirectUrl = new URL(location, "https://www.yahoo.co.jp");
 
       headers.set(
         "Location",
