@@ -1,4 +1,3 @@
-```js
 export default {
   async fetch(request) {
     const url = new URL(request.url);
@@ -16,8 +15,6 @@ export default {
 
     const headers = new Headers(response.headers);
 
-    // Bing側がリダイレクトを返した場合、
-    // WorkerのURLではなくBingのURLへ飛ばされないようにする
     const location = headers.get("Location");
 
     if (location) {
@@ -25,7 +22,9 @@ export default {
 
       headers.set(
         "Location",
-        url.origin + redirectUrl.pathname + redirectUrl.search
+        url.origin +
+        redirectUrl.pathname +
+        redirectUrl.search
       );
     }
 
@@ -35,4 +34,3 @@ export default {
     });
   }
 };
-```
