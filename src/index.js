@@ -3,111 +3,73 @@ export default {
     const url = new URL(request.url);
     const proxyOrigin = url.origin;
 
-    // ターゲットURL決定
-    let targetUrlStr;
-    if (url.pathname.startsWith("/http://") || url.pathname.startsWith("/https://")) {
-      targetUrlStr = url.pathname.slice(1) + url.search;
-    } else {
-      targetUrlStr = "https://www.youtube.com" + url.pathname + url.search;
-    }
+    // ターゲットURL
+    let target = url.pathname.startsWith("/http") 
+      ? url.pathname.slice(1) + url.search 
+      : "https://www.youtube.com" + url.pathname + url.search;
 
     let targetUrl;
     try {
-      targetUrl = new URL(targetUrlStr);
+      targetUrl = new URL(target);
     } catch {
-      return new Response("Invalid URL", { status: 400 });
+      return new Response("Bad URL", { status: 400 });
     }
 
-    // ヘッダー処理
+    // ヘッダー整理（IP匿名化）
     const headers = new Headers(request.headers);
-    const removeList = [
-      "host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
-      "x-forwarded-for", "x-real-ip", "x-client-ip", "x-forwarded",
-      "forwarded", "true-client-ip", "x-cluster-client-ip", "fastly-client-ip",
-      "via", "x-forwarded-proto", "x-forwarded-host", "origin", "referer"
-    ];
-    for (const h of removeList) headers.delete(h);
+    ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
+     "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via",
+     "origin", "referer"].forEach(h => headers.delete(h));
 
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-    const response = await fetch(targetUrl.toString(), {
+    const res = await fetch(targetUrl, {
       method: request.method,
       headers,
-      body: ["GET", "HEAD"].includes(request.method) ? undefined : request.body,
+      body: ["GET", "HEAD"].includes(request.method) ? null : request.body,
       redirect: "follow",
     });
 
-    const contentType = response.headers.get("content-type") || "";
-    const newHeaders = new Headers(response.headers);
+    const type = res.headers.get("content-type") || "";
+    const newHeaders = new Headers(res.headers);
 
     // 邪魔なヘッダー削除
-    ["content-security-policy", "content-security-policy-report-only", "x-frame-options", "strict-transport-security", "x-content-type-options"].forEach(h => newHeaders.delete(h));
+    ["content-security-policy", "content-security-policy-report-only",
+     "x-frame-options", "strict-transport-security"].forEach(h => newHeaders.delete(h));
 
-    // CookieのDomain削除
-    if (newHeaders.has("set-cookie")) {
-      const cookies = newHeaders.getSetCookie?.() || [];
-      newHeaders.delete("set-cookie");
-      cookies.forEach(c => newHeaders.append("set-cookie", c.replace(/;\s*Domain=[^;]*/gi, "")));
-    }
-
-    // 書き換え対象か？
-    const isText = contentType.includes("text/html") ||
-                   contentType.includes("text/css") ||
-                   contentType.includes("javascript") ||
-                   contentType.includes("application/json");
-
-    if (!isText) {
+    // HTML以外はそのまま返す（軽量化の肝）
+    if (!type.includes("text/html")) {
       newHeaders.delete("content-length");
-      return new Response(response.body, {
-        status: response.status,
-        statusText: response.statusText,
-        headers: newHeaders,
-      });
+      return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    let body = await response.text();
+    // HTMLだけ書き換え
+    let html = await res.text();
 
-    // ========== ここが重要：二重置換を防ぐ安全な書き換え ==========
     const domains = [
-      "www.youtube-nocookie.com",
-      "youtube-nocookie.com",
       "www.youtube.com",
-      "m.youtube.com",
       "youtube.com",
-      "www.youtu.be",
+      "m.youtube.com",
       "youtu.be",
       "i.ytimg.com",
-      "s.ytimg.com",
       "ytimg.com",
-      "yt3.ggpht.com",
-      "ggpht.com",
-      "googleusercontent.com",
       "googlevideo.com",
     ];
 
-    // 長い順にソート
+    // 長い順
     domains.sort((a, b) => b.length - a.length);
 
-    // 1. まず全部を一時マーカーに置き換える（二重を完全防止）
-    domains.forEach((domain, i) => {
-      const marker = `__PROXY_${i}__`;
-      // https://domain
-      body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
-      // //domain
-      body = body.replace(new RegExp(`//${domain.replace(/\./g, "\\.")}`, "gi"), marker);
-    });
+    for (const d of domains) {
+      const re = new RegExp(`https?://${d.replace(/\./g, "\\.")}`, "gi");
+      html = html.replace(re, `${proxyOrigin}/https://${d}`);
 
-    // 2. マーカーを正しいプロキシURLに戻す
-    domains.forEach((domain, i) => {
-      const marker = `__PROXY_${i}__`;
-      body = body.split(marker).join(`${proxyOrigin}/https://${domain}`);
-    });
+      const re2 = new RegExp(`//${d.replace(/\./g, "\\.")}`, "gi");
+      html = html.replace(re2, `//${url.host}/https://${d}`);
+    }
 
     newHeaders.delete("content-length");
-
-    return new Response(body, {
-      status: response.status,
-      statusText: response.statusText,
+    return new Response(html, {
+      status: res.status,
       headers: newHeaders,
     });
   },
