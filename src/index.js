@@ -20,10 +20,9 @@ export default {
     ["host", "cf-connecting-ip", "cf-ipcountry", "cf-ray", "cf-visitor",
      "x-forwarded-for", "x-real-ip", "x-client-ip", "forwarded", "via"].forEach(h => headers.delete(h));
 
-    // ログイン時は Origin / Referer を残した方が通る場合があるので削除しない
     headers.set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36");
 
-    // リダイレクトは手動で処理（Locationを書き換えるため）
+    // リダイレクト手動
     const res = await fetch(targetUrl, {
       method: request.method,
       headers,
@@ -33,13 +32,13 @@ export default {
 
     const newHeaders = new Headers(res.headers);
 
-    // Locationヘッダーをプロキシ経由に書き換え
+    // Location書き換え
     if (newHeaders.has("location")) {
       let loc = newHeaders.get("location");
       if (loc.startsWith("http")) {
-        newHeaders.set("location", `${proxyOrigin}/${loc}`);
+        newHeaders.set("location", proxyOrigin + "/" + loc);
       } else if (loc.startsWith("//")) {
-        newHeaders.set("location", `${proxyOrigin}/https:${loc}`);
+        newHeaders.set("location", proxyOrigin + "/https:" + loc);
       }
     }
 
@@ -47,7 +46,7 @@ export default {
     ["content-security-policy", "content-security-policy-report-only",
      "x-frame-options", "strict-transport-security"].forEach(h => newHeaders.delete(h));
 
-    // CookieのDomainを削除（ログインに重要）
+    // Cookie Domain削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
@@ -58,14 +57,19 @@ export default {
 
     const type = res.headers.get("content-type") || "";
 
-    // バイナリ系はそのまま
+    // バイナリはそのまま
     if (type.includes("video/") || type.includes("audio/") || type.includes("image/") || type.includes("font/")) {
       newHeaders.delete("content-length");
       return new Response(res.body, { status: res.status, headers: newHeaders });
     }
 
-    // 書き換え対象
-    const shouldRewrite = type.includes("text/html") || type.includes("application/json") || type.includes("text/plain") || type.includes("javascript");
+    // 書き換え対象を広げる（ログインJS対策）
+    const shouldRewrite =
+      type.includes("text/html") ||
+      type.includes("application/json") ||
+      type.includes("text/plain") ||
+      type.includes("javascript") ||
+      type.includes("text/css");
 
     if (!shouldRewrite) {
       newHeaders.delete("content-length");
@@ -74,9 +78,12 @@ export default {
 
     let body = await res.text();
 
-    // ログインに必要なドメインも含める
+    // ログインに必要なドメインを多めに入れる
     const domains = [
       "accounts.google.com",
+      "www.gstatic.com",
+      "gstatic.com",
+      "ssl.gstatic.com",
       "www.youtube.com",
       "youtube.com",
       "m.youtube.com",
@@ -85,12 +92,13 @@ export default {
       "ytimg.com",
       "googlevideo.com",
       "myaccount.google.com",
-      "gstatic.com",
+      "apis.google.com",
+      "www.googleapis.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
 
-    // マーカー方式
+    // マーカー方式で安全置換
     domains.forEach((domain, i) => {
       const marker = `__P${i}__`;
       body = body.replace(new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi"), marker);
