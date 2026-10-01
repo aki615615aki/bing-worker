@@ -6,11 +6,9 @@ export default {
     // ===== ターゲットURLの決定 =====
     let targetUrlStr;
 
-    // パスが /https:// または /http:// で始まる場合はそれをターゲットにする
     if (url.pathname.startsWith("/http://") || url.pathname.startsWith("/https://")) {
       targetUrlStr = url.pathname.slice(1) + url.search;
     } else {
-      // 通常アクセスはYouTubeに飛ばす
       targetUrlStr = "https://www.youtube.com" + url.pathname + url.search;
     }
 
@@ -21,10 +19,9 @@ export default {
       return new Response("Invalid target URL", { status: 400 });
     }
 
-    // ===== リクエストヘッダー準備 =====
+    // ===== リクエストヘッダー =====
     const headers = new Headers(request.headers);
 
-    // IP・指紋関連ヘッダーを徹底削除
     const removeHeaders = [
       "host",
       "cf-connecting-ip",
@@ -42,19 +39,15 @@ export default {
       "via",
       "x-forwarded-proto",
       "x-forwarded-host",
-      "origin", // オリジンチェック対策で消す場合あり
     ];
     for (const h of removeHeaders) {
       headers.delete(h);
     }
 
-    // User-Agent固定
     headers.set(
       "User-Agent",
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     );
-
-    // Refererも一応消す（必要ならコメントアウト）
     headers.delete("referer");
 
     // ===== 上流へリクエスト =====
@@ -68,25 +61,22 @@ export default {
     const contentType = response.headers.get("content-type") || "";
     const newHeaders = new Headers(response.headers);
 
-    // 邪魔なセキュリティヘッダー削除
     newHeaders.delete("content-security-policy");
     newHeaders.delete("content-security-policy-report-only");
     newHeaders.delete("x-frame-options");
     newHeaders.delete("strict-transport-security");
     newHeaders.delete("x-content-type-options");
 
-    // Set-CookieのDomainを削除（簡易）
+    // Set-CookieのDomain削除
     if (newHeaders.has("set-cookie")) {
       const cookies = newHeaders.getSetCookie?.() || [];
       newHeaders.delete("set-cookie");
       for (const cookie of cookies) {
-        // Domain=... の部分を削除
         const cleaned = cookie.replace(/;\s*Domain=[^;]*/gi, "");
         newHeaders.append("set-cookie", cleaned);
       }
     }
 
-    // ===== 本文の書き換え対象か判定 =====
     const shouldRewrite =
       contentType.includes("text/html") ||
       contentType.includes("text/css") ||
@@ -94,7 +84,6 @@ export default {
       contentType.includes("application/json");
 
     if (!shouldRewrite) {
-      // 画像・動画・フォントなどはそのまま返す
       newHeaders.delete("content-length");
       return new Response(response.body, {
         status: response.status,
@@ -103,42 +92,44 @@ export default {
       });
     }
 
-    // ===== 本文を取得してURL書き換え =====
     let body = await response.text();
 
-    // 書き換える対象ドメイン一覧（YouTube関連）
+    // ===== 重要：長いドメインから順に置換する（二重置換防止） =====
     const domains = [
+      "www.youtube-nocookie.com",
+      "youtube-nocookie.com",
       "www.youtube.com",
-      "youtube.com",
       "m.youtube.com",
-      "youtu.be",
+      "youtube.com",
       "www.youtu.be",
-      "googlevideo.com",
-      "ytimg.com",
+      "youtu.be",
       "i.ytimg.com",
       "s.ytimg.com",
+      "ytimg.com",
       "yt3.ggpht.com",
-      "googleusercontent.com",
       "ggpht.com",
-      "youtube-nocookie.com",
-      "www.youtube-nocookie.com",
+      "googleusercontent.com",
+      "googlevideo.com",
     ];
 
+    // 長い順にソート
+    domains.sort((a, b) => b.length - a.length);
+
     for (const domain of domains) {
-      // https://domain → プロキシ経由
-      const re1 = new RegExp(`https?://${domain.replace(/\./g, "\\.")}`, "gi");
-      body = body.replace(re1, `${proxyOrigin}/https://${domain}`);
+      // すでにプロキシ経由になっているものは触らない
+      const reFull = new RegExp(
+        `(?<!${proxyOrigin.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/)https?://${domain.replace(/\./g, "\\.")}`,
+        "gi"
+      );
+      body = body.replace(reFull, `${proxyOrigin}/https://${domain}`);
 
-      // //domain （プロトコル相対）
-      const re2 = new RegExp(`//${domain.replace(/\./g, "\\.")}`, "gi");
-      body = body.replace(re2, `//${url.host}/https://${domain}`);
+      // プロトコル相対
+      const reProto = new RegExp(
+        `(?<!${url.host.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/)//${domain.replace(/\./g, "\\.")}`,
+        "gi"
+      );
+      body = body.replace(reProto, `//${url.host}/https://${domain}`);
     }
-
-    // 特殊対応: youtu.be の短縮URLも
-    body = body.replace(
-      /https?:\/\/youtu\.be\//gi,
-      `${proxyOrigin}/https://youtu.be/`
-    );
 
     newHeaders.delete("content-length");
 
