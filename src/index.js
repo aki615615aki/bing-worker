@@ -8,7 +8,6 @@ export default {
     if (url.pathname.startsWith("/http://") || url.pathname.startsWith("/https://")) {
       target = url.pathname.slice(1) + url.search;
     } else {
-      // デフォルトはBing
       target = "https://www.bing.com" + url.pathname + url.search;
     }
 
@@ -90,33 +89,34 @@ export default {
 
     let body = await res.text();
 
-    // ===== ドメインリスト（ブロスタ用クラウド＋既存） =====
+    // ===== ドメインリスト =====
     const domains = [
-      // ===== ブロスタ用クラウドゲーミング =====
-      "easyfun.gg",
+      // EasyFun.gg（ブロスタ用）
       "www.easyfun.gg",
+      "easyfun.gg",
+
+      // CloudMoon
+      "web.cloudmoonapp.com",
       "cloudmoonapp.com",
       "www.cloudmoonapp.com",
-      "web.cloudmoonapp.com",
+
+      // now.gg
       "now.gg",
       "www.now.gg",
       "nowgg.nl",
 
-      // YouTube関連
+      // YouTube
       "www.youtube.com", "youtube.com", "m.youtube.com", "youtu.be",
-      "youtube-nocookie.com", "i.ytimg.com", "s.ytimg.com", "ytimg.com",
-      "yt3.ggpht.com", "ggpht.com", "googlevideo.com", "googleusercontent.com",
+      "i.ytimg.com", "ytimg.com", "googlevideo.com", "googleusercontent.com",
 
       // Bing / Microsoft
-      "www.bing.com", "bing.com", "c.bing.com", "r.bing.com", "th.bing.com",
-      "tse1.mm.bing.net", "tse2.mm.bing.net", "tse3.mm.bing.net", "tse4.mm.bing.net",
-      "www.microsoft.com", "microsoft.com", "login.microsoftonline.com", "login.live.com",
-      "msn.com", "www.msn.com", "cdn.msn.com",
+      "www.bing.com", "bing.com",
+      "www.microsoft.com", "microsoft.com",
+      "login.microsoftonline.com", "login.live.com",
 
-      // Google系
+      // Google
       "www.google.com", "google.com", "accounts.google.com",
-      "www.gstatic.com", "ssl.gstatic.com", "gstatic.com",
-      "apis.google.com", "www.googleapis.com",
+      "www.gstatic.com", "gstatic.com",
     ];
 
     domains.sort((a, b) => b.length - a.length);
